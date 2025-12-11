@@ -8,6 +8,7 @@ from fastapi import FastAPI, Request, Form, HTTPException
 from fastapi.responses import HTMLResponse, PlainTextResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from fastapi.middleware.cors import CORSMiddleware
 import httpx
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
@@ -19,6 +20,22 @@ from typing import Optional
 import os
 
 app = FastAPI(title="FreeLLMsTxt", description="Dynamic llms.txt Generator")
+
+# CORS middleware for cross-origin requests from frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://arlen-kumar.vercel.app",
+        "https://arlenkumar.com",
+        "http://localhost:3000",
+        "http://localhost:8000",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:8000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Create templates directory
 os.makedirs("templates", exist_ok=True)

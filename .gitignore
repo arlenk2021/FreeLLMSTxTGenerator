@@ -23,5 +23,6 @@ Thumbs.db
 # Project specific
 *.txt
 !requirements.txt
+!runtime.txt
 .playwright-mcp/
 
