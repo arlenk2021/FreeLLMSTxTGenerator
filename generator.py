@@ -1,0 +1,154 @@
+"""
+llms.txt Generator
+Creates a well-formatted llms.txt file from crawled page data
+"""
+
+from dataclasses import dataclass
+from datetime import datetime
+from urllib.parse import urlparse
+from crawler import PageInfo
+from rich.console import Console
+
+console = Console()
+
+
+@dataclass
+class LLMsTxtConfig:
+    """Configuration for llms.txt generation"""
+    include_descriptions: bool = True
+    include_content_preview: bool = False
+    group_by_path: bool = True
+    max_description_length: int = 200
+
+
+class LLMsTxtGenerator:
+    """Generate llms.txt from crawled pages"""
+    
+    def __init__(self, base_url: str, pages: list[PageInfo], config: LLMsTxtConfig = None):
+        self.base_url = base_url
+        self.pages = pages
+        self.config = config or LLMsTxtConfig()
+        self.domain = urlparse(base_url).netloc
+    
+    def _get_site_title(self) -> str:
+        """Extract site title from homepage or domain"""
+        # Try to find homepage
+        for page in self.pages:
+            if page.url.rstrip('/') == self.base_url.rstrip('/'):
+                if page.title:
+                    # Remove common suffixes
+                    title = page.title.split(' | ')[0].split(' - ')[0].strip()
+                    return title
+        
+        # Fallback to domain name
+        return self.domain.replace('www.', '').split('.')[0].title()
+    
+    def _get_site_description(self) -> str:
+        """Extract site description from homepage"""
+        for page in self.pages:
+            if page.url.rstrip('/') == self.base_url.rstrip('/'):
+                if page.description:
+                    return page.description
+        return f"Documentation and resources from {self.domain}"
+    
+    def _categorize_pages(self) -> dict[str, list[PageInfo]]:
+        """Group pages by their URL path segments"""
+        categories: dict[str, list[PageInfo]] = {}
+        
+        for page in self.pages:
+            parsed = urlparse(page.url)
+            path_parts = [p for p in parsed.path.split('/') if p]
+            
+            if not path_parts:
+                category = "Main"
+            elif len(path_parts) == 1:
+                category = path_parts[0].replace('-', ' ').replace('_', ' ').title()
+            else:
+                category = path_parts[0].replace('-', ' ').replace('_', ' ').title()
+            
+            if category not in categories:
+                categories[category] = []
+            categories[category].append(page)
+        
+        return categories
+    
+    def _format_link(self, page: PageInfo) -> str:
+        """Format a single page as a markdown link with optional description"""
+        title = page.title if page.title else page.url
+        
+        # Clean up title
+        title = title.split(' | ')[0].split(' - ')[0].strip()
+        if not title:
+            title = page.url.split('/')[-1] or "Home"
+        
+        # Truncate long titles
+        if len(title) > 80:
+            title = title[:77] + "..."
+        
+        link = f"- [{title}]({page.url})"
+        
+        if self.config.include_descriptions and page.description:
+            desc = page.description
+            if len(desc) > self.config.max_description_length:
+                desc = desc[:self.config.max_description_length - 3] + "..."
+            link += f": {desc}"
+        
+        return link
+    
+    def generate(self) -> str:
+        """Generate the llms.txt content"""
+        lines = []
+        
+        # Header
+        site_title = self._get_site_title()
+        site_description = self._get_site_description()
+        
+        lines.append(f"# {site_title}")
+        lines.append("")
+        lines.append(f"> {site_description}")
+        lines.append("")
+        
+        if self.config.group_by_path:
+            # Group pages by category
+            categories = self._categorize_pages()
+            
+            # Sort categories, putting "Main" first
+            sorted_categories = sorted(categories.keys(), key=lambda x: (x != "Main", x))
+            
+            for category in sorted_categories:
+                pages = categories[category]
+                
+                if category == "Main" and len(pages) == 1:
+                    # Just list the homepage without a section header
+                    lines.append(self._format_link(pages[0]))
+                else:
+                    lines.append(f"## {category}")
+                    lines.append("")
+                    
+                    for page in sorted(pages, key=lambda p: p.url):
+                        lines.append(self._format_link(page))
+                    
+                    lines.append("")
+        else:
+            # Simple flat list
+            for page in sorted(self.pages, key=lambda p: p.url):
+                lines.append(self._format_link(page))
+        
+        # Footer
+        lines.append("")
+        lines.append("---")
+        lines.append(f"Generated by FreeLLMsTxt on {datetime.now().strftime('%Y-%m-%d')}")
+        lines.append(f"Source: {self.base_url}")
+        
+        return '\n'.join(lines)
+    
+    def save(self, filepath: str = "llms.txt"):
+        """Save llms.txt to file"""
+        content = self.generate()
+        
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(content)
+        
+        console.print(f"\n[bold green]✓ Saved to {filepath}[/bold green]")
+        return filepath
+
